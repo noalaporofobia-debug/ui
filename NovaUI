@@ -1,34 +1,39 @@
--- NovaUI.lua
--- Librería de UI para Roblox (versión premium)
-
+-- NovaUI.lua (con efectos y animaciones)
 local NovaUI = {}
 
--- Servicios necesarios
+-- Servicios
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 
--- Configuración global de temas
+-- Configuración de temas
 local Themes = {
     Dark = {
         Background = Color3.fromRGB(25, 25, 25),
         Foreground = Color3.fromRGB(35, 35, 35),
         Accent = Color3.fromRGB(66, 134, 244),
+        AccentHover = Color3.fromRGB(86, 154, 255),
         Text = Color3.fromRGB(240, 240, 240),
         SubText = Color3.fromRGB(180, 180, 180),
-        Border = Color3.fromRGB(50, 50, 50)
+        Border = Color3.fromRGB(50, 50, 50),
+        ButtonHoverBrightness = 1.2
     },
     Light = {
         Background = Color3.fromRGB(245, 245, 245),
         Foreground = Color3.fromRGB(255, 255, 255),
         Accent = Color3.fromRGB(66, 134, 244),
+        AccentHover = Color3.fromRGB(86, 154, 255),
         Text = Color3.fromRGB(30, 30, 30),
         SubText = Color3.fromRGB(100, 100, 100),
-        Border = Color3.fromRGB(220, 220, 220)
+        Border = Color3.fromRGB(220, 220, 220),
+        ButtonHoverBrightness = 0.9
     }
 }
 
--- Función para crear un marco con bordes redondeados
+local TWEEN_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local FAST_TWEEN = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+-- Utilidad para crear Frame con UICorner
 local function CreateRoundedFrame(parent, size, position, color, radius)
     local frame = Instance.new("Frame")
     frame.Size = size
@@ -58,12 +63,27 @@ function WindowClass.new(config)
     self.ScreenGui = Instance.new("ScreenGui")
     self.ScreenGui.Parent = CoreGui
 
+    -- Ventana principal con transparencia inicial para animar
     self.MainFrame = CreateRoundedFrame(self.ScreenGui, self.Size, UDim2.fromScale(0.5, 0.5) - UDim2.fromOffset(self.Size.X.Offset/2, self.Size.Y.Offset/2), self.Theme.Background, 8)
+    self.MainFrame.BackgroundTransparency = 1   -- empezamos invisible
     self.MainFrame.ClipsDescendants = true
     self.MainFrame.Active = true
     self.MainFrame.Draggable = false
 
-    self.TitleBar = CreateRoundedFrame(self.MainFrame, UDim2.new(1, 0, 0, 40), UDim2.fromScale(0, 0), self.Theme.Foreground, 0)
+    -- Animación de entrada (fade + scale)
+    self.MainFrame.Size = self.Size - UDim2.fromOffset(20,20)
+    self.MainFrame.Position = UDim2.fromScale(0.5,0.5) - UDim2.fromOffset(self.Size.X.Offset/2 -10, self.Size.Y.Offset/2 -10)
+
+    spawn(function()
+        TweenService:Create(self.MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0,
+            Size = self.Size,
+            Position = UDim2.fromScale(0.5,0.5) - UDim2.fromOffset(self.Size.X.Offset/2, self.Size.Y.Offset/2)
+        }):Play()
+    end)
+
+    -- Barra de título
+    self.TitleBar = CreateRoundedFrame(self.MainFrame, UDim2.new(1, 0, 0, 40), UDim2.fromScale(0,0), self.Theme.Foreground, 0)
     local titleCorner = Instance.new("UICorner")
     titleCorner.CornerRadius = UDim.new(0, 8)
     titleCorner.Parent = self.TitleBar
@@ -97,6 +117,7 @@ function WindowClass.new(config)
     subLabel.TextXAlignment = Enum.TextXAlignment.Left
     subLabel.Parent = self.TitleBar
 
+    -- Botón de cierre con hover
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.fromOffset(28, 28)
     closeBtn.Position = UDim2.new(1, -35, 0.5, -14)
@@ -110,10 +131,27 @@ function WindowClass.new(config)
     local closeCorner = Instance.new("UICorner")
     closeCorner.CornerRadius = UDim.new(0, 14)
     closeCorner.Parent = closeBtn
+
     closeBtn.MouseButton1Click:Connect(function()
-        self.ScreenGui:Destroy()
+        -- Animación de salida
+        TweenService:Create(self.MainFrame, TWEEN_INFO, {
+            BackgroundTransparency = 1,
+            Size = self.MainFrame.Size - UDim2.fromOffset(20,20),
+            Position = self.MainFrame.Position + UDim2.fromOffset(10,10)
+        }):Play()
+        delay(0.3, function()
+            self.ScreenGui:Destroy()
+        end)
     end)
 
+    closeBtn.MouseEnter:Connect(function()
+        TweenService:Create(closeBtn, FAST_TWEEN, {BackgroundColor3 = self.Theme.AccentHover}):Play()
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        TweenService:Create(closeBtn, FAST_TWEEN, {BackgroundColor3 = self.Theme.Accent}):Play()
+    end)
+
+    -- Contenedor de pestañas
     self.TabContainer = CreateRoundedFrame(self.MainFrame, UDim2.new(0, 120, 1, -40), UDim2.new(0, 0, 0, 40), self.Theme.Foreground, 0)
     self.TabContainer.BackgroundTransparency = 0.3
     self.ContentArea = CreateRoundedFrame(self.MainFrame, UDim2.new(1, -120, 1, -40), UDim2.new(0, 120, 0, 40), self.Theme.Background, 0)
@@ -121,9 +159,9 @@ function WindowClass.new(config)
     self.Tabs = {}
     self.CurrentTab = nil
 
+    -- Arrastre de ventana
     local dragging = false
-    local dragStart = nil
-    local startPos = nil
+    local dragStart, startPos
 
     self.TitleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -174,15 +212,26 @@ function WindowClass:AddTab(config)
     tabCorner.CornerRadius = UDim.new(0, 6)
     tabCorner.Parent = tabBtn
 
+    -- Contenido de la pestaña con fade
     local contentFrame = Instance.new("ScrollingFrame")
     contentFrame.Size = UDim2.new(1, -20, 1, -20)
     contentFrame.Position = UDim2.fromOffset(10, 10)
     contentFrame.BackgroundTransparency = 1
+    contentFrame.BorderSizePixel = 0
     contentFrame.ScrollBarThickness = 4
     contentFrame.ScrollBarImageColor3 = self.Theme.Accent
+    contentFrame.ScrollBarImageTransparency = 1   -- oculto por defecto
     contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    contentFrame.Parent = self.ContentArea
     contentFrame.Visible = false
+    contentFrame.Parent = self.ContentArea
+
+    -- Mostrar scrollbar al hacer hover
+    contentFrame.MouseEnter:Connect(function()
+        TweenService:Create(contentFrame, FAST_TWEEN, {ScrollBarImageTransparency = 0}):Play()
+    end)
+    contentFrame.MouseLeave:Connect(function()
+        TweenService:Create(contentFrame, FAST_TWEEN, {ScrollBarImageTransparency = 1}):Play()
+    end)
 
     local layout = Instance.new("UIListLayout")
     layout.Padding = UDim.new(0, 8)
@@ -193,17 +242,28 @@ function WindowClass:AddTab(config)
     tab.Button = tabBtn
     tab.Content = contentFrame
 
+    -- Hover sobre botón de pestaña
+    tabBtn.MouseEnter:Connect(function()
+        if tab ~= self.CurrentTab then
+            TweenService:Create(tabBtn, FAST_TWEEN, {BackgroundColor3 = self.Theme.Border}):Play()
+        end
+    end)
+    tabBtn.MouseLeave:Connect(function()
+        if tab ~= self.CurrentTab then
+            TweenService:Create(tabBtn, FAST_TWEEN, {BackgroundColor3 = self.Theme.Foreground}):Play()
+        end
+    end)
+
     tabBtn.MouseButton1Click:Connect(function()
         self:SwitchTab(tab)
     end)
 
     table.insert(self.Tabs, tab)
-
     if #self.Tabs == 1 then
         self:SwitchTab(tab)
     end
 
-    -- Preparar API para el tab
+    -- Métodos para el tab
     local TabMt = {
         AddSection = function(self, name)
             return self.Window:AddSection(self, name)
@@ -226,8 +286,16 @@ function WindowClass:SwitchTab(tab)
     for _, t in ipairs(self.Tabs) do
         local active = (t == tab)
         t.Button.BackgroundColor3 = active and self.Theme.Accent or self.Theme.Foreground
-        t.Button.TextColor3 = active and Color3.fromRGB(255, 255, 255) or self.Theme.Text
-        t.Content.Visible = active
+        t.Button.TextColor3 = active and Color3.fromRGB(255,255,255) or self.Theme.Text
+        t.Content.Visible = true  -- necesario para animar
+        TweenService:Create(t.Content, TWEEN_INFO, {BackgroundTransparency = active and 0 or 1}):Play()
+        if not active then
+            delay(0.25, function()
+                if t ~= self.CurrentTab then
+                    t.Content.Visible = false
+                end
+            end)
+        end
     end
     self.CurrentTab = tab
 end
@@ -273,7 +341,7 @@ function WindowClass:AddSection(tab, name)
                 totalHeight = totalHeight + child.AbsoluteSize.Y + 8
             end
         end
-        content.CanvasSize = UDim2.new(0, 0, 0, totalHeight + 10)
+        TweenService:Create(content, FAST_TWEEN, {CanvasSize = UDim2.new(0, 0, 0, totalHeight + 10)}):Play()
     end
 
     sectionFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCanvas)
@@ -285,13 +353,14 @@ function WindowClass:AddSection(tab, name)
     return section
 end
 
+-- Botón con efectos hover y clic
 function WindowClass:AddButton(tab, config)
     local lastSection = tab.Sections[#tab.Sections] or self:AddSection(tab, "")
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(1, -10, 0, 36)
     button.BackgroundColor3 = self.Theme.Accent
     button.Text = config.Name or "Button"
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextColor3 = Color3.fromRGB(255,255,255)
     button.TextSize = 14
     button.Font = Enum.Font.GothamSemibold
     button.BorderSizePixel = 0
@@ -299,12 +368,31 @@ function WindowClass:AddButton(tab, config)
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = button
-    if config.Callback then
-        button.MouseButton1Click:Connect(config.Callback)
-    end
+
+    -- Efectos hover
+    button.MouseEnter:Connect(function()
+        TweenService:Create(button, FAST_TWEEN, {BackgroundColor3 = self.Theme.AccentHover}):Play()
+    end)
+    button.MouseLeave:Connect(function()
+        TweenService:Create(button, FAST_TWEEN, {BackgroundColor3 = self.Theme.Accent}):Play()
+    end)
+
+    -- Efecto clic (escala)
+    button.MouseButton1Down:Connect(function()
+        TweenService:Create(button, FAST_TWEEN, {Size = UDim2.new(1, -20, 0, 34)}):Play()
+    end)
+    button.MouseButton1Up:Connect(function()
+        TweenService:Create(button, FAST_TWEEN, {Size = UDim2.new(1, -10, 0, 36)}):Play()
+    end)
+    button.MouseButton1Click:Connect(function()
+        if config.Callback then
+            config.Callback()
+        end
+    end)
     return button
 end
 
+-- Toggle con hover extra
 function WindowClass:AddToggle(tab, config)
     local lastSection = tab.Sections[#tab.Sections] or self:AddSection(tab, "")
     local frame = Instance.new("Frame")
@@ -336,7 +424,7 @@ function WindowClass:AddToggle(tab, config)
     local dot = Instance.new("Frame")
     dot.Size = UDim2.fromOffset(16, 16)
     dot.Position = UDim2.new(0, 2, 0.5, -8)
-    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dot.BackgroundColor3 = Color3.fromRGB(255,255,255)
     dot.BorderSizePixel = 0
     dot.Parent = toggleButton
     local dotCorner = Instance.new("UICorner")
@@ -344,21 +432,33 @@ function WindowClass:AddToggle(tab, config)
     dotCorner.Parent = dot
 
     local enabled = config.Default or false
+
     local function updateVisual()
         local goalBg = enabled and self.Theme.Accent or self.Theme.Border
         local goalPos = enabled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-        toggleButton.BackgroundColor3 = goalBg
-        TweenService:Create(dot, TweenInfo.new(0.2), {Position = goalPos}):Play()
+        TweenService:Create(toggleButton, FAST_TWEEN, {BackgroundColor3 = goalBg}):Play()
+        TweenService:Create(dot, TWEEN_INFO, {Position = goalPos}):Play()
     end
     updateVisual()
+
     toggleButton.MouseButton1Click:Connect(function()
         enabled = not enabled
         updateVisual()
         if config.Callback then config.Callback(enabled) end
     end)
+
+    -- Hover sobre el toggle
+    toggleButton.MouseEnter:Connect(function()
+        TweenService:Create(dot, FAST_TWEEN, {Size = UDim2.fromOffset(18,18)}):Play()
+    end)
+    toggleButton.MouseLeave:Connect(function()
+        TweenService:Create(dot, FAST_TWEEN, {Size = UDim2.fromOffset(16,16)}):Play()
+    end)
+
     return toggleButton
 end
 
+-- Slider con barra animada y knob escalable
 function WindowClass:AddSlider(tab, config)
     local lastSection = tab.Sections[#tab.Sections] or self:AddSection(tab, "")
     local frame = Instance.new("Frame")
@@ -409,7 +509,7 @@ function WindowClass:AddSlider(tab, config)
     local knob = Instance.new("TextButton")
     knob.Size = UDim2.fromOffset(14, 14)
     knob.Position = UDim2.new(0, 0, 0.5, -7)
-    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.BackgroundColor3 = Color3.fromRGB(255,255,255)
     knob.Text = ""
     knob.BorderSizePixel = 0
     knob.Parent = sliderFrame
@@ -426,8 +526,9 @@ function WindowClass:AddSlider(tab, config)
         local relX = math.clamp((x - sliderFrame.AbsolutePosition.X) / sliderFrame.AbsoluteSize.X, 0, 1)
         curVal = math.floor(minVal + (maxVal - minVal) * relX + 0.5)
         curVal = math.clamp(curVal, minVal, maxVal)
-        fill.Size = UDim2.new((curVal - minVal) / (maxVal - minVal), 0, 1, 0)
-        knob.Position = UDim2.new((curVal - minVal) / (maxVal - minVal), -7, 0.5, -7)
+        local fraction = (curVal - minVal) / (maxVal - minVal)
+        TweenService:Create(fill, FAST_TWEEN, {Size = UDim2.new(fraction, 0, 1, 0)}):Play()
+        TweenService:Create(knob, FAST_TWEEN, {Position = UDim2.new(fraction, -7, 0.5, -7)}):Play()
         valueLabel.Text = tostring(curVal)
         if config.Callback then config.Callback(curVal) end
     end
@@ -437,29 +538,58 @@ function WindowClass:AddSlider(tab, config)
     end
     updateVisual()
 
-    knob.MouseButton1Down:Connect(function() dragging = true end)
+    -- Agrandar knob al pasar el ratón
+    knob.MouseEnter:Connect(function()
+        TweenService:Create(knob, FAST_TWEEN, {Size = UDim2.fromOffset(18,18)}):Play()
+    end)
+    knob.MouseLeave:Connect(function()
+        if not dragging then
+            TweenService:Create(knob, FAST_TWEEN, {Size = UDim2.fromOffset(14,14)}):Play()
+        end
+    end)
+
+    knob.MouseButton1Down:Connect(function()
+        dragging = true
+        TweenService:Create(knob, FAST_TWEEN, {Size = UDim2.fromOffset(18,18)}):Play()
+    end)
+
     sliderFrame.MouseButton1Down:Connect(function()
         dragging = true
         setValueFromX(UserInputService:GetMouseLocation().X)
     end)
+
     UserInputService.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             setValueFromX(input.Position.X)
         end
     end)
+
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
+            TweenService:Create(knob, FAST_TWEEN, {Size = UDim2.fromOffset(14,14)}):Play()
         end
     end)
+
     return knob
 end
 
+-- Notificaciones con slide + fade
 function NovaUI:Notify(config)
     local gui = Instance.new("ScreenGui")
     gui.Parent = CoreGui
-    local notif = CreateRoundedFrame(gui, UDim2.fromOffset(250, 60), UDim2.new(1, -260, 1, -80), Themes.Dark.Foreground, 6)
-    notif.BackgroundTransparency = 0.1
+
+    local notif = CreateRoundedFrame(gui, UDim2.fromOffset(250, 60), UDim2.new(1, -10, 1, -80), Themes.Dark.Foreground, 6)
+    notif.BackgroundTransparency = 0.5
+    notif.BorderSizePixel = 0
+
+    -- Animación de entrada (deslizar desde derecha)
+    notif.Position = UDim2.new(1, 20, 1, -80)
+    TweenService:Create(notif, TWEEN_INFO, {
+        Position = UDim2.new(1, -260, 1, -80),
+        BackgroundTransparency = 0.1
+    }):Play()
+
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, -10, 0, 20)
     title.Position = UDim2.fromOffset(5, 5)
@@ -470,6 +600,7 @@ function NovaUI:Notify(config)
     title.TextSize = 14
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Parent = notif
+
     local text = Instance.new("TextLabel")
     text.Size = UDim2.new(1, -10, 0, 20)
     text.Position = UDim2.fromOffset(5, 28)
@@ -480,9 +611,19 @@ function NovaUI:Notify(config)
     text.TextSize = 12
     text.TextXAlignment = Enum.TextXAlignment.Left
     text.Parent = notif
+
     local time = config.Time or 3
     task.delay(time, function()
-        if gui then gui:Destroy() end
+        if gui then
+            -- Animación de salida
+            TweenService:Create(notif, TWEEN_INFO, {
+                Position = UDim2.new(1, 20, 1, -80),
+                BackgroundTransparency = 1
+            }):Play()
+            task.delay(0.3, function()
+                if gui then gui:Destroy() end
+            end)
+        end
     end)
 end
 
