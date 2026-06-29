@@ -1,4 +1,4 @@
-local NovaUI = loadstring(game:HttpGet("tu_link"))()
+local NovaUI = loadstring(game:HttpGet("https://github.com/noalaporofobia-debug/ui/blob/main/lib"))()
 
 local Window = NovaUI:CreateWindow({
     Title = "Nova",
