@@ -1,22 +1,597 @@
-local NovaUI = loadstring(game:HttpGet("https://github.com/noalaporofobia-debug/ui/blob/main/lib"))()
+-- NovaUI.lua
+-- Librería de UI para Roblox (versión premium)
 
-local Window = NovaUI:CreateWindow({
-    Title = "Nova",
-    Size = UDim2.fromOffset(650,450)
-})
+local NovaUI = {}
 
-local Main = Window:AddTab("Home")
+-- Servicios necesarios
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 
-Main:AddButton({
-    Text = "Test",
-    Callback = function()
-        print("clicked")
-    end
-})
+-- Configuración global de temas
+local Themes = {
+	Dark = {
+		Background = Color3.fromRGB(25, 25, 25),
+		Foreground = Color3.fromRGB(35, 35, 35),
+		Accent = Color3.fromRGB(66, 134, 244),
+		Text = Color3.fromRGB(240, 240, 240),
+		SubText = Color3.fromRGB(180, 180, 180),
+		Border = Color3.fromRGB(50, 50, 50)
+	},
+	Light = {
+		Background = Color3.fromRGB(245, 245, 245),
+		Foreground = Color3.fromRGB(255, 255, 255),
+		Accent = Color3.fromRGB(66, 134, 244),
+		Text = Color3.fromRGB(30, 30, 30),
+		SubText = Color3.fromRGB(100, 100, 100),
+		Border = Color3.fromRGB(220, 220, 220)
+	}
+}
 
-Main:AddToggle({
-    Text = "Enabled",
-    Callback = function(v)
-        print(v)
-    end
-})
+-- Función para crear un marco con bordes redondeados (usando ImageLabel como máscara)
+local function CreateRoundedFrame(parent, size, position, color, radius)
+	local frame = Instance.new("Frame")
+	frame.Size = size
+	frame.Position = position
+	frame.BackgroundColor3 = color
+	frame.BorderSizePixel = 0
+	frame.Parent = parent
+
+	if radius and radius > 0 then
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, radius)
+		corner.Parent = frame
+	end
+	return frame
+end
+
+-- Clase para la Ventana
+local WindowClass = {}
+WindowClass.__index = WindowClass
+
+function WindowClass.new(config)
+	local self = setmetatable({}, WindowClass)
+	self.Title = config.Title or "Window"
+	self.Subtitle = config.Subtitle or ""
+	self.Size = config.Size or UDim2.fromOffset(600, 400)
+	self.Theme = Themes[config.Theme] or Themes.Dark
+
+	-- GUI principal
+	self.ScreenGui = Instance.new("ScreenGui")
+	self.ScreenGui.Parent = CoreGui
+
+	-- Fondo oscuro (opcional, para bloquear input)
+	-- self.ScreenGui.IgnoreGuiInset = true
+
+	-- Ventana principal
+	self.MainFrame = CreateRoundedFrame(self.ScreenGui, self.Size, UDim2.fromScale(0.5, 0.5) - UDim2.fromOffset(self.Size.X.Offset/2, self.Size.Y.Offset/2), self.Theme.Background, 8)
+	self.MainFrame.ClipsDescendants = true
+	self.MainFrame.Active = true
+	self.MainFrame.Draggable = false
+
+	-- Barra de título
+	self.TitleBar = CreateRoundedFrame(self.MainFrame, UDim2.fromScale(1, 0), UDim2.fromScale(0, 0), self.Theme.Foreground, 0)
+	self.TitleBar.Size = UDim2.new(1, 0, 0, 40)
+	self.TitleBar.BackgroundColor3 = self.Theme.Foreground
+	self.TitleBar.BorderSizePixel = 0
+
+	local titleCorner = Instance.new("UICorner")
+	titleCorner.CornerRadius = UDim.new(0, 8)
+	titleCorner.Parent = self.TitleBar
+
+	-- Relleno para que solo la esquina superior tenga borde
+	local bottomFill = Instance.new("Frame")
+	bottomFill.Size = UDim2.new(1, 0, 0.5, 0)
+	bottomFill.Position = UDim2.new(0, 0, 0.5, 0)
+	bottomFill.BackgroundColor3 = self.Theme.Foreground
+	bottomFill.BorderSizePixel = 0
+	bottomFill.Parent = self.TitleBar
+
+	-- Título
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Size = UDim2.new(1, -50, 1, 0)
+	titleLabel.Position = UDim2.new(0, 15, 0, 0)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Font = Enum.Font.GothamBold
+	titleLabel.Text = self.Title
+	titleLabel.TextColor3 = self.Theme.Text
+	titleLabel.TextSize = 18
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.Parent = self.TitleBar
+
+	-- Subtítulo
+	local subLabel = Instance.new("TextLabel")
+	subLabel.Size = UDim2.new(1, -50, 0.5, 0)
+	subLabel.Position = UDim2.new(0, 15, 0.6, 0)
+	subLabel.BackgroundTransparency = 1
+	subLabel.Font = Enum.Font.Gotham
+	subLabel.Text = self.Subtitle
+	subLabel.TextColor3 = self.Theme.SubText
+	subLabel.TextSize = 12
+	subLabel.TextXAlignment = Enum.TextXAlignment.Left
+	subLabel.Parent = self.TitleBar
+
+	-- Botón de cierre
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.fromOffset(28, 28)
+	closeBtn.Position = UDim2.new(1, -35, 0.5, -14)
+	closeBtn.BackgroundColor3 = self.Theme.Accent
+	closeBtn.Text = "✕"
+	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.TextSize = 16
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.BorderSizePixel = 0
+	closeBtn.Parent = self.TitleBar
+	local closeCorner = Instance.new("UICorner")
+	closeCorner.CornerRadius = UDim.new(0, 14)
+	closeCorner.Parent = closeBtn
+	closeBtn.MouseButton1Click:Connect(function()
+		self.ScreenGui:Destroy()
+	end)
+
+	-- Contenedor de pestañas (lado izquierdo)
+	self.TabContainer = CreateRoundedFrame(self.MainFrame, UDim2.new(0, 120, 1, -40), UDim2.new(0, 0, 0, 40), self.Theme.Foreground, 0)
+	self.TabContainer.BackgroundTransparency = 0.3
+	self.TabContainer.BorderSizePixel = 0
+
+	-- Contenedor de contenido (derecha)
+	self.ContentArea = CreateRoundedFrame(self.MainFrame, UDim2.new(1, -120, 1, -40), UDim2.new(0, 120, 0, 40), self.Theme.Background, 0)
+
+	-- Lista de pestañas
+	self.Tabs = {}
+	self.CurrentTab = nil
+
+	-- Variables para arrastrar
+	local dragging = false
+	local dragStart = nil
+	local startPos = nil
+
+	self.TitleBar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = input.Position
+			startPos = self.MainFrame.Position
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local delta = input.Position - dragStart
+			self.MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	return self
+end
+
+function WindowClass:AddTab(config)
+	local tab = {
+		Name = config.Name,
+		Icon = config.Icon,
+		Window = self,
+		Button = nil,
+		Content = nil,
+		Sections = {}
+	}
+
+	-- Botón de pestaña
+	local tabBtn = Instance.new("TextButton")
+	tabBtn.Size = UDim2.new(1, -10, 0, 36)
+	tabBtn.Position = UDim2.new(0, 5, 0, 10 + (#self.Tabs * 42))
+	tabBtn.BackgroundColor3 = self.Theme.Foreground
+	tabBtn.Text = "  " .. (config.Icon and (config.Icon .. "  ") or "") .. config.Name
+	tabBtn.TextColor3 = self.Theme.Text
+	tabBtn.TextSize = 14
+	tabBtn.Font = Enum.Font.GothamSemibold
+	tabBtn.TextXAlignment = Enum.TextXAlignment.Left
+	tabBtn.BorderSizePixel = 0
+	tabBtn.Parent = self.TabContainer
+	local tabCorner = Instance.new("UICorner")
+	tabCorner.CornerRadius = UDim.new(0, 6)
+	tabCorner.Parent = tabBtn
+
+	-- Contenedor del contenido de la pestaña
+	local contentFrame = Instance.new("ScrollingFrame")
+	contentFrame.Size = UDim2.new(1, -20, 1, -20)
+	contentFrame.Position = UDim2.fromOffset(10, 10)
+	contentFrame.BackgroundTransparency = 1
+	contentFrame.BorderSizePixel = 0
+	contentFrame.ScrollBarThickness = 4
+	contentFrame.ScrollBarImageColor3 = self.Theme.Accent
+	contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+	contentFrame.Parent = self.ContentArea
+	contentFrame.Visible = false
+
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 8)
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = contentFrame
+
+	tab.Button = tabBtn
+	tab.Content = contentFrame
+
+	-- Manejar clic
+	tabBtn.MouseButton1Click:Connect(function()
+		self:SwitchTab(tab)
+	end)
+
+	table.insert(self.Tabs, tab)
+
+	-- Si es la primera pestaña, activarla
+	if #self.Tabs == 1 then
+		self:SwitchTab(tab)
+	end
+
+	return tab
+end
+
+function WindowClass:SwitchTab(tab)
+	for _, t in ipairs(self.Tabs) do
+		local active = (t == tab)
+		t.Button.BackgroundColor3 = active and self.Theme.Accent or self.Theme.Foreground
+		t.Button.TextColor3 = active and Color3.fromRGB(255, 255, 255) or self.Theme.Text
+		t.Content.Visible = active
+	end
+	self.CurrentTab = tab
+end
+
+-- Sección dentro de una pestaña
+function WindowClass:AddSection(tab, name)
+	local section = {
+		Name = name,
+		Frame = nil
+	}
+
+	local sectionFrame = Instance.new("Frame")
+	sectionFrame.Size = UDim2.new(1, -10, 0, 0) -- se ajustará automáticamente
+	sectionFrame.BackgroundTransparency = 1
+	sectionFrame.Parent = tab.Content
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, 0, 0, 24)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.Text = name
+	title.TextColor3 = self.Theme.Text
+	title.TextSize = 16
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = sectionFrame
+
+	local divider = Instance.new("Frame")
+	divider.Size = UDim2.new(1, 0, 0, 1)
+	divider.Position = UDim2.new(0, 0, 0, 24)
+	divider.BackgroundColor3 = self.Theme.Border
+	divider.BorderSizePixel = 0
+	divider.Parent = sectionFrame
+
+	-- Layout vertical interno para los elementos
+	local elementsLayout = Instance.new("UIListLayout")
+	elementsLayout.Padding = UDim.new(0, 6)
+	elementsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	elementsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	elementsLayout.Parent = sectionFrame
+
+	section.Frame = sectionFrame
+	section.ElementsLayout = elementsLayout
+
+	-- Ajustar el CanvasSize del ScrollingFrame
+	local function updateCanvas()
+		local content = tab.Content
+		local totalHeight = 0
+		for _, child in ipairs(content:GetChildren()) do
+			if child:IsA("Frame") then
+				totalHeight = totalHeight + child.AbsoluteSize.Y + 8 -- padding
+			end
+		end
+		content.CanvasSize = UDim2.new(0, 0, 0, totalHeight + 10)
+	end
+
+	-- Conectar cambios de tamaño
+	sectionFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCanvas)
+	sectionFrame.ChildAdded:Connect(function()
+		wait() updateCanvas()
+	end)
+
+	return section
+end
+
+-- Función global para añadir sección desde el tab
+local TabMt = {
+	AddSection = function(tab, name)
+		return tab.Window:AddSection(tab, name)
+	end,
+	AddButton = function(tab, config)
+		return tab.Window:AddButton(tab, config)
+	end,
+	AddToggle = function(tab, config)
+		return tab.Window:AddToggle(tab, config)
+	end,
+	AddSlider = function(tab, config)
+		return tab.Window:AddSlider(tab, config)
+	end,
+}
+
+-- Añadir elementos a una pestaña (deben ser llamados después de añadir secciones)
+
+function WindowClass:AddButton(tab, config)
+	-- Buscar la última sección para insertar ahí
+	local lastSection = tab.Sections[#tab.Sections]
+	if not lastSection then
+		-- Si no hay sección, crear una por defecto
+		lastSection = self:AddSection(tab, "")
+		tab.Sections[#tab.Sections] = lastSection
+	end
+
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(1, -10, 0, 36)
+	button.BackgroundColor3 = self.Theme.Accent
+	button.Text = config.Name or "Button"
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.TextSize = 14
+	button.Font = Enum.Font.GothamSemibold
+	button.BorderSizePixel = 0
+	button.Parent = lastSection.Frame
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = button
+
+	if config.Callback then
+		button.MouseButton1Click:Connect(config.Callback)
+	end
+
+	return button
+end
+
+function WindowClass:AddToggle(tab, config)
+	local lastSection = tab.Sections[#tab.Sections]
+	if not lastSection then
+		lastSection = self:AddSection(tab, "")
+		tab.Sections[#tab.Sections] = lastSection
+	end
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(1, -10, 0, 32)
+	frame.BackgroundTransparency = 1
+	frame.Parent = lastSection.Frame
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -50, 1, 0)
+	label.Position = UDim2.new(0, 0, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.Gotham
+	label.Text = config.Name or "Toggle"
+	label.TextColor3 = self.Theme.Text
+	label.TextSize = 14
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = frame
+
+	local toggleButton = Instance.new("TextButton")
+	toggleButton.Size = UDim2.fromOffset(40, 20)
+	toggleButton.Position = UDim2.new(1, -45, 0.5, -10)
+	toggleButton.BackgroundColor3 = self.Theme.Border
+	toggleButton.Text = ""
+	toggleButton.BorderSizePixel = 0
+	toggleButton.Parent = frame
+	local toggleCorner = Instance.new("UICorner")
+	toggleCorner.CornerRadius = UDim.new(0, 10)
+	toggleCorner.Parent = toggleButton
+
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.fromOffset(16, 16)
+	dot.Position = UDim2.new(0, 2, 0.5, -8)
+	dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	dot.BorderSizePixel = 0
+	dot.Parent = toggleButton
+	local dotCorner = Instance.new("UICorner")
+	dotCorner.CornerRadius = UDim.new(0, 8)
+	dotCorner.Parent = dot
+
+	local enabled = config.Default or false
+
+	local function updateVisual()
+		local goalBg = enabled and self.Theme.Accent or self.Theme.Border
+		local goalPos = enabled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+		toggleButton.BackgroundColor3 = goalBg
+		TweenService:Create(dot, TweenInfo.new(0.2), {Position = goalPos}):Play()
+	end
+
+	updateVisual()
+
+	toggleButton.MouseButton1Click:Connect(function()
+		enabled = not enabled
+		updateVisual()
+		if config.Callback then
+			config.Callback(enabled)
+		end
+	end)
+
+	return toggleButton
+end
+
+function WindowClass:AddSlider(tab, config)
+	local lastSection = tab.Sections[#tab.Sections]
+	if not lastSection then
+		lastSection = self:AddSection(tab, "")
+		tab.Sections[#tab.Sections] = lastSection
+	end
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(1, -10, 0, 50)
+	frame.BackgroundTransparency = 1
+	frame.Parent = lastSection.Frame
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 0, 20)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.Gotham
+	label.Text = config.Name or "Slider"
+	label.TextColor3 = self.Theme.Text
+	label.TextSize = 14
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = frame
+
+	local valueLabel = Instance.new("TextLabel")
+	valueLabel.Size = UDim2.new(0, 50, 0, 20)
+	valueLabel.Position = UDim2.new(1, -55, 0, 0)
+	valueLabel.BackgroundTransparency = 1
+	valueLabel.Font = Enum.Font.Gotham
+	valueLabel.Text = tostring(config.Default or 0)
+	valueLabel.TextColor3 = self.Theme.Accent
+	valueLabel.TextSize = 14
+	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+	valueLabel.Parent = frame
+
+	local sliderFrame = Instance.new("Frame")
+	sliderFrame.Size = UDim2.new(1, 0, 0, 20)
+	sliderFrame.Position = UDim2.new(0, 0, 0, 24)
+	sliderFrame.BackgroundColor3 = self.Theme.Border
+	sliderFrame.BorderSizePixel = 0
+	sliderFrame.Parent = frame
+	local sliderCorner = Instance.new("UICorner")
+	sliderCorner.CornerRadius = UDim.new(0, 4)
+	sliderCorner.Parent = sliderFrame
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(0, 0, 1, 0)
+	fill.BackgroundColor3 = self.Theme.Accent
+	fill.BorderSizePixel = 0
+	fill.Parent = sliderFrame
+	local fillCorner = Instance.new("UICorner")
+	fillCorner.CornerRadius = UDim.new(0, 4)
+	fillCorner.Parent = fill
+
+	local knob = Instance.new("TextButton")
+	knob.Size = UDim2.fromOffset(14, 14)
+	knob.Position = UDim2.new(0, 0, 0.5, -7)
+	knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	knob.Text = ""
+	knob.BorderSizePixel = 0
+	knob.Parent = sliderFrame
+	local knobCorner = Instance.new("UICorner")
+	knobCorner.CornerRadius = UDim.new(0, 7)
+	knobCorner.Parent = knob
+
+	local minVal = config.Min or 0
+	local maxVal = config.Max or 100
+	local curValue = config.Default or 50
+	local dragging = false
+
+	local function setValueFromX(x)
+		local relX = math.clamp((x - sliderFrame.AbsolutePosition.X) / sliderFrame.AbsoluteSize.X, 0, 1)
+		local newVal = math.floor(minVal + (maxVal - minVal) * relX + 0.5)
+		curVal = math.clamp(newVal, minVal, maxVal)
+		updateVisual()
+		if config.Callback then
+			config.Callback(curVal)
+		end
+	end
+
+	local function updateVisual()
+		local fraction = (curVal - minVal) / (maxVal - minVal)
+		fill.Size = UDim2.new(fraction, 0, 1, 0)
+		knob.Position = UDim2.new(fraction, -7, 0.5, -7)
+		valueLabel.Text = tostring(curVal)
+	end
+
+	updateVisual()
+
+	-- Eventos de arrastre
+	knob.MouseButton1Down:Connect(function()
+		dragging = true
+	end)
+
+	sliderFrame.MouseButton1Down:Connect(function()
+		dragging = true
+		setValueFromX(UserInputService:GetMouseLocation().X)
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			setValueFromX(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	return knob
+end
+
+-- Notificaciones
+function NovaUI:Notify(config)
+	local gui = Instance.new("ScreenGui")
+	gui.Parent = CoreGui
+
+	local notif = CreateRoundedFrame(gui, UDim2.fromOffset(250, 60), UDim2.new(1, -260, 1, -80), Themes.Dark.Foreground, 6)
+	notif.BackgroundTransparency = 0.1
+	notif.BorderSizePixel = 0
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -10, 0, 20)
+	title.Position = UDim2.fromOffset(5, 5)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.Text = config.Title or ""
+	title.TextColor3 = Themes.Dark.Text
+	title.TextSize = 14
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = notif
+
+	local text = Instance.new("TextLabel")
+	text.Size = UDim2.new(1, -10, 0, 20)
+	text.Position = UDim2.fromOffset(5, 28)
+	text.BackgroundTransparency = 1
+	text.Font = Enum.Font.Gotham
+	text.Text = config.Text or ""
+	text.TextColor3 = Themes.Dark.SubText
+	text.TextSize = 12
+	text.TextXAlignment = Enum.TextXAlignment.Left
+	text.Parent = notif
+
+	local time = config.Time or 3
+	delay(time, function()
+		if gui then
+			gui:Destroy()
+		end
+	end)
+end
+
+-- Sobrescribir tablas para que tengan los métodos
+function WindowClass:CreateTabAPI(tab)
+	local tabObj = setmetatable(tab, {__index = TabMt})
+	return tabObj
+end
+
+-- Modificar AddTab para devolver el tab con los métodos
+local originalAddTab = WindowClass.AddTab
+function WindowClass:AddTab(config)
+	local rawTab = originalAddTab(self, config)
+	-- rawTab es la tabla simple, pero necesitamos añadirle secciones
+	-- Podemos envolverlo para que los métodos estén disponibles
+	local wrapped = self:CreateTabAPI(rawTab)
+	-- También guardar la referencia original en tabs
+	self.Tabs[#self.Tabs] = rawTab -- aseguramos que el último sea el raw
+	return wrapped
+end
+
+-- Constructor de la UI
+function NovaUI:CreateWindow(config)
+	local win = WindowClass.new(config)
+	return win
+end
+
+-- Asegurar que el tab tenga AddSection, AddButton, etc.
+-- Lo hacemos mediante metatables en CreateTabAPI
+
+return NovaUI
